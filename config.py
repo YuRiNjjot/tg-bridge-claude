@@ -27,14 +27,23 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "mistral-saba-24b")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "kimi-k2.5:cloud")
 
-# Transcription: OpenAI (cloud fallback) or local Vulkan Whisper
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-WHISPER_BACKEND = os.getenv("WHISPER_BACKEND", "local")  # "local", "openai", or "disabled"
+# Transcription: local Vulkan Whisper (AMD GPU) or disabled
+WHISPER_BACKEND = os.getenv("WHISPER_BACKEND", "local")  # "local" or "disabled"
 
-# Whisper local paths (for GPU AMD via Vulkan + Windows exe)
-WHISPER_WINDOWS_EXE = os.getenv("WHISPER_WINDOWS_EXE", "")
-WHISPER_WINDOWS_MODEL = os.getenv("WHISPER_WINDOWS_MODEL", "")
-WHISPER_WINDOWS_TEMP = os.getenv("WHISPER_WINDOWS_TEMP", "D:\\tmp\\tg-claude")
+_BASE_DIR = Path(__file__).parent
+
+def _resolve_path(path_str):
+    if not path_str:
+        return ""
+    p = Path(path_str)
+    if not p.is_absolute():
+        p = _BASE_DIR / p
+    return str(p.resolve())
+
+# Whisper local paths (relative to repo root)
+WHISPER_WINDOWS_EXE = _resolve_path(os.getenv("WHISPER_WINDOWS_EXE", ""))
+WHISPER_WINDOWS_MODEL = _resolve_path(os.getenv("WHISPER_WINDOWS_MODEL", ""))
+WHISPER_WINDOWS_TEMP = _resolve_path(os.getenv("WHISPER_WINDOWS_TEMP", ".\\data\\temp"))
 
 # Whisper Linux paths (for NVIDIA GPU or CPU)
 WHISPER_LINUX_EXE = os.getenv("WHISPER_LINUX_EXE", "")

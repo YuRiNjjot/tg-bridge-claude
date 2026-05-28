@@ -34,9 +34,12 @@ data/
 *.db
 *.log
 *.jsonl
+*.err
+*.pid
 
-# Whisper models (large files)
-models/
+# Whisper models (large files) — but keep folder structure
+models/*
+!models/.gitkeep
 *.bin
 *.ggml
 *.gguf
