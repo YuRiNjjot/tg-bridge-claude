@@ -25,20 +25,23 @@ import config
 TOKEN = config.TELEGRAM_BOT_TOKEN
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 
-LOG_FILE = "/mnt/e/ClaudeCode/tg-claude/data/bridge_messages.jsonl"
-OUT_FILE = "/mnt/e/ClaudeCode/tg-claude/data/bridge_outbox.jsonl"
-VOICE_DIR = "/mnt/e/ClaudeCode/tg-claude/data/voice"
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
+LOG_FILE = str(DATA_DIR / "bridge_messages.jsonl")
+OUT_FILE = str(DATA_DIR / "bridge_outbox.jsonl")
+VOICE_DIR = str(DATA_DIR / "voice")
+PHOTO_DIR = str(DATA_DIR / "photos")
 
 # Whisper paths from config (supports AMD Vulkan + NVIDIA/CPU)
-WIN_WHISPER = config.WHISPER_WINDOWS_EXE or "D:\\ai\\audio-text\\whisper-vulkan\\whisper-cli.exe"
-WIN_MODEL = config.WHISPER_WINDOWS_MODEL or "D:\\AI\\hermes\\whisper-bin\\ggml-small.bin"
-WIN_TEMP = config.WHISPER_WINDOWS_TEMP or "D:\\tmp\\tg-claude"
+WIN_WHISPER = config.WHISPER_WINDOWS_EXE or r"D:\ai\audio-text\whisper-vulkan\whisper-cli.exe"
+WIN_MODEL = config.WHISPER_WINDOWS_MODEL or r"D:\AI\hermes\whisper-bin\ggml-small.bin"
+WIN_TEMP = config.WHISPER_WINDOWS_TEMP or r"D:\tmp\tg-claude"
 
-STATE_FILE = "/mnt/e/ClaudeCode/tg-claude/data/.bridge_state"
-CWD_FILE = "/mnt/e/ClaudeCode/tg-claude/data/.bridge_cwd"
+STATE_FILE = str(DATA_DIR / ".bridge_state")
+CWD_FILE = str(DATA_DIR / ".bridge_cwd")
 
 # Allowed directories for bash commands (security)
-ALLOWED_ROOTS = ["/mnt/e/ClaudeCode", "/mnt/d", "/tmp"]
+ALLOWED_ROOTS = [str(BASE_DIR), "D:\\", "C:\\"]
 
 def _load_last_id():
     if os.path.exists(STATE_FILE):
@@ -59,7 +62,7 @@ def _get_cwd():
             cwd = f.read().strip()
             if os.path.isdir(cwd):
                 return cwd
-    return "/mnt/e/ClaudeCode"
+    return str(BASE_DIR)
 
 def _set_cwd(cwd):
     with open(CWD_FILE, "w") as f:
@@ -155,9 +158,10 @@ def _handle_command(text, chat_id, reply_to):
 
     return False
 
-os.makedirs(os.path.dirname(LOG_FILE) or ".", exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(VOICE_DIR, exist_ok=True)
-os.makedirs(f"/mnt/d/tmp/tg-claude", exist_ok=True)
+os.makedirs(PHOTO_DIR, exist_ok=True)
+os.makedirs(WIN_TEMP, exist_ok=True)
 
 
 def send_message(chat_id, text, reply_to=None):
@@ -209,13 +213,13 @@ def transcribe_voice(voice, chat_id, msg_id):
         )
 
         # Copy to Windows temp for GPU whisper
-        win_wav = f"/mnt/d/tmp/tg-claude/{os.path.basename(wav_path)}"
+        win_wav = os.path.join(WIN_TEMP, os.path.basename(wav_path))
         shutil.copy(wav_path, win_wav)
 
-        # Run Windows whisper-cli.exe via cmd.exe
+        # Run Windows whisper-cli.exe directly (native Windows, no WSL)
         t0 = time.time()
         result = subprocess.run(
-            ["cmd.exe", "/c", f'{WIN_WHISPER} -m {WIN_MODEL} -f {WIN_TEMP}\\{os.path.basename(wav_path)} -np -l auto'],
+            [WIN_WHISPER, "-m", WIN_MODEL, "-f", win_wav, "-np", "-l", "auto"],
             capture_output=True, text=True, timeout=120,
         )
         elapsed = time.time() - t0
@@ -243,9 +247,6 @@ def transcribe_voice(voice, chat_id, msg_id):
         return None
 
 
-PHOTO_DIR = "/mnt/e/ClaudeCode/tg-claude/data/photos"
-os.makedirs(PHOTO_DIR, exist_ok=True)
-
 def download_photo(photo, chat_id, msg_id):
     """Download photo from Telegram and save to disk."""
     try:
@@ -270,112 +271,6 @@ def download_photo(photo, chat_id, msg_id):
         return local_path
     except Exception as e:
         print(f"[ERROR] download_photo: {e}")
-        return None
-
-
-def describe_photo_with_ollama(photo_path):
-    """Describe photo using Ollama vision model."""
-    try:
-        import base64
-
-        # Read image and encode to base64
-        with open(photo_path, "rb") as f:
-            image_data = base64.b64encode(f.read()).decode("utf-8")
-
-        # Call Ollama API
-        url = config.OLLAMA_URL + "/api/generate"
-        payload = {
-            "model": config.OLLAMA_MODEL,
-            "prompt": "Describe this image in detail. What do you see?",
-            "images": [image_data],
-            "stream": False
-        }
-
-        resp = requests.post(url, json=payload, timeout=120)
-        data = resp.json()
-
-        if "response" in data:
-            return data["response"].strip()
-        elif "error" in data:
-            print(f"[OLLAMA ERROR] {data['error']}")
-            return None
-        return None
-    except Exception as e:
-        print(f"[ERROR] describe_photo_with_ollama: {e}")
-        return None
-
-
-def describe_photo_with_cloud(photo_path, provider="openai"):
-    """Describe photo using cloud vision API."""
-    try:
-        import base64
-
-        with open(photo_path, "rb") as f:
-            image_data = base64.b64encode(f.read()).decode("utf-8")
-
-        if provider == "anthropic":
-            # Claude Vision API
-            url = "https://api.anthropic.com/v1/messages"
-            headers = {
-                "x-api-key": config.ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            }
-            payload = {
-                "model": "claude-3-opus-20240229",
-                "max_tokens": 1024,
-                "messages": [{
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
-                        {"type": "text", "text": "Describe this image in detail."}
-                    ]
-                }]
-            }
-            resp = requests.post(url, headers=headers, json=payload, timeout=60)
-            data = resp.json()
-            return data.get("content", [{}])[0].get("text", "")
-
-        elif provider == "openai":
-            # GPT-4 Vision API
-            url = "https://api.openai.com/v1/chat/completions"
-            headers = {"Authorization": f"Bearer {config.OPENAI_API_KEY}"}
-            payload = {
-                "model": "gpt-4o",
-                "messages": [{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Describe this image in detail."},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}}
-                    ]
-                }],
-                "max_tokens": 1024
-            }
-            resp = requests.post(url, headers=headers, json=payload, timeout=60)
-            data = resp.json()
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-        return None
-    except Exception as e:
-        print(f"[ERROR] describe_photo_with_cloud ({provider}): {e}")
-        return None
-
-
-def describe_photo(photo_path):
-    """Describe photo using configured backend."""
-    backend = os.getenv("VISION_BACKEND", "ollama").lower()
-
-    if backend == "disabled":
-        return None
-    elif backend == "ollama":
-        return describe_photo_with_ollama(photo_path)
-    elif backend in ("anthropic", "openai"):
-        return describe_photo_with_cloud(photo_path, backend)
-    else:
-        # Try ollama first, fallback to none
-        result = describe_photo_with_ollama(photo_path)
-        if result:
-            return result
         return None
 
 
@@ -406,15 +301,7 @@ def log_incoming(update):
         photo_path = download_photo(msg["photo"], chat.get("id"), msg.get("message_id"))
         if photo_path:
             entry["photo_path"] = photo_path
-            # Try to describe with configured vision backend
-            print(f"[VISION] Asking backend to describe photo...")
-            description = describe_photo(photo_path)
-            if description:
-                entry["photo_description"] = description
-                entry["text"] = f"[PHOTO] {description}"
-                print(f"[VISION] Description: {description[:80]}")
-            else:
-                entry["text"] = f"[PHOTO] Saved to: {photo_path} (vision disabled or failed)"
+            entry["text"] = f"[PHOTO] Saved to: {photo_path}"
         else:
             entry["text"] = "[PHOTO - failed to download]"
 
@@ -434,14 +321,13 @@ def process_outbox():
     if not os.path.exists(OUT_FILE):
         return
 
-    with open(OUT_FILE, "r", encoding="utf-8") as f:
+    with open(OUT_FILE, "r", encoding="utf-8-sig") as f:
         lines = f.readlines()
 
     if not lines:
         return
 
-    open(OUT_FILE, "w").close()
-
+    failed_lines = []
     for line in lines:
         line = line.strip()
         if not line:
@@ -452,10 +338,20 @@ def process_outbox():
             text = data.get("text", "")
             reply_to = data.get("reply_to")
             if chat_id and text:
-                send_message(chat_id, text, reply_to)
-                print(f"[OUT] -> chat {chat_id}: {text[:60]}")
+                result = send_message(chat_id, text, reply_to)
+                if result and result.get("ok"):
+                    print(f"[OUT] -> chat {chat_id}: {text[:60]}")
+                else:
+                    print(f"[WARN] send failed, keeping: {result}")
+                    failed_lines.append(json.dumps(data, ensure_ascii=False) + "\n")
+            else:
+                failed_lines.append(line + "\n")
         except Exception as e:
             print(f"[ERROR] outbox: {e}")
+            failed_lines.append(line + "\n")
+
+    with open(OUT_FILE, "w", encoding="utf-8") as f:
+        f.writelines(failed_lines)
 
 
 def main_loop():

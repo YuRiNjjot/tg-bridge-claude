@@ -10,9 +10,12 @@ import json
 import sys
 import os
 
-LOG_FILE = "/mnt/e/ClaudeCode/tg-claude/data/bridge_messages.jsonl"
-OUT_FILE = "/mnt/e/ClaudeCode/tg-claude/data/bridge_outbox.jsonl"
-STATE_FILE = "/mnt/e/ClaudeCode/tg-claude/data/.last_read"
+from pathlib import Path
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
+LOG_FILE = str(DATA_DIR / "bridge_messages.jsonl")
+OUT_FILE = str(DATA_DIR / "bridge_outbox.jsonl")
+STATE_FILE = str(DATA_DIR / ".last_read")
 
 
 def get_new_messages():

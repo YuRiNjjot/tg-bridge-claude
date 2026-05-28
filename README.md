@@ -1,214 +1,184 @@
-# tg-claude — Telegram-бот для общения с AI
+# tg-bridge-claude
 
-Telegram-бот, который принимает текст и голосовые сообщения, отправляет их в AI (OpenRouter/Groq/Ollama) и возвращает ответ. Контекст диалога сохраняется между сессиями.
+Telegram bridge для Claude Code. Позволяет общаться с Claude Code через Telegram — как с обычным агентом.
 
-## Возможности
+**Bridge = мост, а не самостоятельный AI-чат.** AI-ответы даёт Claude Code, а не bridge.
 
-- **Текст** — отправляй текст, получай ответ от AI
-- **Голосовые** — скачивает, конвертирует через ffmpeg, транскрибирует через whisper.cpp (Vulkan/AMD GPU) или OpenAI fallback
-- **Multi-provider AI** — авто-fallback: OpenRouter (MiniMax M2.5) → Groq (Mistral) → Ollama (локальный kimi-k2.5:cloud)
-- **Персистентный контекст** — история сообщений в SQLite + JSON-синхронизация между папками
-- **Авто-approve** — Claude Code не спрашивает разрешений на bash-команды
-- **Адаптивный rate limit** — при 429 от одного провайдера переключается на следующий
+---
 
-## Структура
+## Как это работает
 
 ```
-tg-claude/
-├── bot.py                     # Основной бот
-├── config.py                  # Конфигурация из .env
-├── llm_client.py             # Multi-provider LLM (OpenRouter → Groq → Ollama)
-├── whisper_client.py         # Локальный whisper.cpp (Vulkan) или OpenAI fallback
-├── memory.py                 # SQLite хранилище контекста
-├── context_persistence.py    # JSON-синхронизация контекста между папками
-├── requirements.txt
-├── .env                       # Ключи API (не коммитить)
-├── .env.example
-├── data/                      # SQLite + временные голосовые
-│   ├── chat_memory.db
-│   └── voice/
-├── .claude/
-│   ├── settings.json          # Авто-разрешения для Claude Code
-│   └── context.json           # Персистентный контекст
-└── README.md
+[Ты в Telegram] → bridge_bot.py → bridge_messages.jsonl
+                                                 ↓
+                              [Claude Code читает и отвечает]
+                                                 ↓
+                                    bridge_outbox.jsonl
+                                                 ↓
+                              bridge_bot.py → [Ты в Telegram]
 ```
 
-## Быстрый старт (если открыта новая сессия Claude Code)
+1. Ты пишешь в Telegram (текст или голосовое)
+2. `bridge_bot.py` логирует сообщение в `bridge_messages.jsonl`
+3. `bridge_poller.py` показывает Claude Code уведомление в терминале
+4. Claude Code пишет ответ в `bridge_outbox.jsonl`
+5. `bridge_bot.py` отправляет ответ в Telegram
 
-> Если ты агент и читаешь это в новой сессии — выполни:
+---
 
-```bash
-cd /mnt/e/ClaudeCode/tg-claude
-pip install -r requirements.txt   # если .venv не активен
-python3 bot.py
+## Требования
+
+- **Windows 11** (native, без WSL)
+- **Python 3.10+**
+- **ffmpeg** (для конвертации голосовых) — `winget install ffmpeg`
+- **whisper.cpp с Vulkan** (для GPU AMD RX 6900 XT, или аналог)
+- **Claude Code** (CLI)
+
+---
+
+## Быстрый старт
+
+### 1. Клонируй репозиторий
+
+```powershell
+git clone https://github.com/YuRiNjjot/tg-bridge-claude.git
+cd tg-bridge-claude
 ```
 
-Если зависимости уже установлены — просто `python3 bot.py`.
+### 2. Установи зависимости
 
-**Фоновый режим:**
-```bash
-nohup python3 bot.py > bot.log 2>&1 &
-echo $! > bot.pid
-```
-
-**Остановить:** `kill $(cat bot.pid)`
-
-**Логи:** `tail -f bot.log`
-
-## Установка с нуля
-
-### 1. Переменные окружения
-
-Файл `.env` уже заполнен ключами. Если нужно поменять:
-
-```bash
-cp .env.example .env
-```
-
-Поля:
-```
-TELEGRAM_BOT_TOKEN=            # Токен от @BotFather (получить обязательно)
-OPENROUTER_API_KEY=sk-or-...   # Уже заполнен (MiniMax M2.5 Free)
-GROQ_API_KEY=gsk_...           # Уже заполнен (Mistral fallback)
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=kimi-k2.5:cloud
-WHISPER_BACKEND=local          # local (Vulkan) или openai (cloud fallback)
-OPENAI_API_KEY=                # Для cloud whisper fallback
-ADMIN_TG_ID=423051956
-MAX_CONTEXT_MESSAGES=20
-```
-
-### 2. Зависимости
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
+```powershell
 pip install -r requirements.txt
 ```
 
-### 3. ffmpeg (для голосовых)
+### 3. Настрой `.env`
 
-```bash
-# Ubuntu/WSL
-sudo apt update && sudo apt install ffmpeg
+Скопируй пример:
+
+```powershell
+cp .env.example .env
 ```
 
-### 4. whisper.cpp с Vulkan (опционально, для локальной транскрибации на AMD RX 6900 XT)
+Отредактируй `.env`:
 
-Если `WHISPER_BACKEND=local`:
-```bash
-# Скачать whisper.cpp
-mkdir -p ~/.local/share/whisper.cpp
-# Собрать с Vulkan поддержкой (для AMD GPU)
-# Инструкция: https://github.com/ggerganov/whisper.cpp#vulkan
+```env
+# Получить токен у @BotFather в Telegram
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+
+# Твой Telegram ID (узнать через @userinfobot)
+ADMIN_TG_ID=your_telegram_user_id_here
+
+# Пути для whisper.cpp (уже настроены для AMD + Vulkan)
+WHISPER_WINDOWS_EXE=D:\\ai\\audio-text\\whisper-vulkan\\whisper-cli.exe
+WHISPER_WINDOWS_MODEL=D:\\AI\\hermes\\whisper-bin\\ggml-small.bin
+WHISPER_WINDOWS_TEMP=D:\\tmp\\tg-claude
 ```
 
-Если Vulkan-версия не собрана — whisper автоматически переключится на OpenAI API.
+### 4. Запусти bridge
 
-## Запуск
-
-### Обычный
-```bash
-cd /mnt/e/ClaudeCode/tg-claude
-source .venv/bin/activate
-python3 bot.py
+```powershell
+.\launch_bridge.ps1
 ```
 
-### Фоновый
-```bash
-nohup python3 bot.py > bot.log 2>&1 &
-echo $! > bot.pid
-```
+Что делает скрипт:
+1. Убивает старые процессы `bridge_bot.py`
+2. Запускает `bridge_bot.py` в фоне (через `pythonw`, без консольного окна)
+3. Запускает `bridge_poller.py` в терминале для мониторинга
 
-### Остановка
-```bash
-kill $(cat /mnt/e/ClaudeCode/tg-claude/bot.pid)
-```
+### 5. Пиши в Telegram
 
-### Логи
-```bash
-tail -f /mnt/e/ClaudeCode/tg-claude/bot.log
-```
+Bridge готов. Отправь сообщение в Telegram — Claude Code увидит его и ответит.
 
-## Команды бота
+---
+
+## Архитектура
+
+### Bridge = мост, не зеркало
+
+В отличие от других Telegram-ботов, этот bridge **не отвечает сам**. Он только:
+- Логирует входящие сообщения
+- Транскрибирует голосовые (whisper.cpp + Vulkan)
+- Отправляет ответы, которые написал Claude Code
+
+AI-ответы всегда идут через Claude Code.
+
+### Файлы
+
+| Файл | Назначение |
+|------|-----------|
+| `bridge_bot.py` | Daemon: polling Telegram API, логирование, отправка ответов |
+| `bridge_poller.py` | ANSI-монитор для Claude Code (яркие баннеры при новом сообщении) |
+| `bridge_reader.py` | Утилита чтения bridge_messages.jsonl |
+| `bridge_monitor.py` | Старый простой монитор (без ANSI) |
+| `config.py` | Чтение `.env` и валидация конфигурации |
+| `send_tg.py` | Утилита отправки сообщения в Telegram |
+| `launch_bridge.ps1` | Единый скрипт запуска |
+
+### Данные
+
+| Файл | Содержимое |
+|------|-----------|
+| `data/bridge_messages.jsonl` | Входящие сообщения из Telegram |
+| `data/bridge_outbox.jsonl` | Исходящие ответы от Claude Code |
+| `data/.poller_state` | ID последнего обработанного сообщения |
+
+---
+
+## Whisper.cpp + Vulkan (AMD GPU)
+
+Bridge использует **локальный** whisper.cpp с Vulkan backend для транскрибации голосовых. Никаких облачных API не нужно.
+
+**Проверено на:** AMD RX 6900 XT 16GB, Windows 11.
+
+Если у тебя NVIDIA — используй CUDA-сборку whisper.cpp. Если CPU — используй CPU-сборку.
+
+---
+
+## Команды Telegram
 
 | Команда | Описание |
 |---------|----------|
 | `/start` | Приветствие |
-| `/clear` | Сбросить историю диалога |
-| `/context` | Показать количество сообщений в памяти |
-| `/help` | Справка |
+| `/id` | Узнать свой chat_id и user_id |
+| `/bash <cmd>` | Выполнить команду в терминале (sandbox: только разрешённые пути) |
+| `/ls [path]` | Список файлов |
+| `/cd <path>` | Сменить рабочую директорию |
+| `/pwd` | Текущая директория |
 
-## AI-провайдеры (fallback chain)
+---
 
-Приоритет:
-1. **OpenRouter** — MiniMax M2.5 Free
-2. **Groq** — Mistral (если OpenRouter rate-limited)
-3. **Ollama** — локальный kimi-k2.5:cloud (если оба cloud недоступны)
+## Claude Code: auto-approve bridge
 
-При 429-ошибке от первого провайдера — автопереключение на следующий с задержкой 1 сек.
+Чтобы Claude Code не спрашивал разрешение на запуск bridge-скриптов, добавь в `settings.json`:
 
-## Контекст и память
-
-### Как работает
-- **SQLite** — хранит историю чатов (`data/chat_memory.db`)
-- **JSON** — синхронизирует контекст между сессиями (`tg-claude/.claude/context.json`)
-- **Корневая JSON** — `E:\ClaudeCode\.claude\context.json` (общий контекст всех проектов)
-
-### При запуске нового агента
-1. Агент читает `cwd/.claude/context.json` (локальный)
-2. Если нет — мержит с `E:\ClaudeCode\.claude\context.json` (корневой)
-3. Если есть mempalace — мержит и с ним
-4. Сохранение пишет в локальную папку **и** реплицирует в корневую
-
-### Для агента (если спрашивают "помнишь меня?")
-Вставь в промпт:
-```python
-from context_persistence import get_context_summary
-print(get_context_summary())
-```
-Или в `README.md` указано, что агент должен при старте вызывать `load_context()`.
-
-## Переключение провайдеров
-
-В `.env`:
-```
-# Только OpenRouter
-OPENROUTER_API_KEY=sk-...
-GROQ_API_KEY=
-OLLAMA_URL=
-
-# Только Groq
-OPENROUTER_API_KEY=
-GROQ_API_KEY=gsk-...
-
-# Только Ollama
-OPENROUTER_API_KEY=
-GROQ_API_KEY=
-OLLAMA_URL=http://localhost:11434
+```json
+{
+  "permissions": {
+    "defaultMode": "auto",
+    "allow": [
+      "Bash(*bridge_bot.py*)",
+      "Bash(*bridge_poller.py*)",
+      "Bash(*launch_bridge.ps1*)",
+      "Bash(*python*)",
+      "PowerShell(*)",
+      "Edit(*bridge_outbox.jsonl*)",
+      "Write(*bridge_outbox.jsonl*)"
+    ]
+  }
+}
 ```
 
-## Переключение транскрибации
+---
 
-```
-WHISPER_BACKEND=local    # whisper.cpp Vulkan (требует сборки)
-WHISPER_BACKEND=openai   # OpenAI API (требует OPENAI_API_KEY)
-```
+## Триггер: "запустибридж"
 
-## Claude Code: авто-разрешения
+Если bridge упал, напиши в Telegram (или в чат Claude Code) команду **"запустибридж"**. Claude Code автоматически:
+1. Убьёт старые процессы
+2. Запустит bridge_bot в фоне
+3. Запустит poller в терминале
 
-Файл `.claude/settings.json` настроен на автопропуск разрешений для:
-- `pip install`, `python`, `python3`
-- `mkdir`, `rm`, `cp`, `mv`, `touch`, `echo`
-- `ffmpeg`, `git`, `apt`, `wget`, `curl`
-- `ollama`, `whisper`
+---
 
-Агент не будет спрашивать "можно ли выполнить команду" — всё пропускается автоматически.
+## Лицензия
 
-## Примечания
-
-- **Telegram Bot Token** нужно получить у @BotFather и вписать в `.env`
-- **OpenRouter** — MiniMax M2.5 Free имеет rate limits. При превышении — fallback на Groq.
-- **AMD RX 6900 XT** — whisper.cpp с Vulkan быстрее CPU, но требует сборки из исходников.
-- Если whisper.cpp не найден — автоматически используется OpenAI API (если ключ задан).
-- Контекст агента (`context_persistence`) работает независимо от Telegram-бота — его можно импортировать в любой Python-скрипт.
+MIT

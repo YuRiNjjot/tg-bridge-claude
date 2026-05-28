@@ -7,8 +7,11 @@ import json
 import os
 import time
 
-LOG_FILE = "/mnt/e/ClaudeCode/tg-claude/data/bridge_messages.jsonl"
-STATE_FILE = "/mnt/e/ClaudeCode/tg-claude/data/.monitor_state"
+from pathlib import Path
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
+LOG_FILE = str(DATA_DIR / "bridge_messages.jsonl")
+STATE_FILE = str(DATA_DIR / ".monitor_state")
 
 
 def get_last_seen():

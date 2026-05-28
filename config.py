@@ -8,7 +8,11 @@ load_dotenv(ENV_PATH)
 
 # Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-ADMIN_TG_ID = int(os.getenv("ADMIN_TG_ID", "0"))
+_admin_raw = os.getenv("ADMIN_TG_ID", "0")
+try:
+    ADMIN_TG_ID = int(_admin_raw)
+except ValueError:
+    ADMIN_TG_ID = 0
 
 # AI Providers (fallback chain)
 # Primary: OpenRouter
@@ -57,13 +61,9 @@ ROOT_MEMORY_FILE = Path("/mnt/e/ClaudeCode") / ".claude" / "memory.json"
 
 
 def check_config():
-    """Проверяет, что хотя бы один AI-провайдер задан."""
+    """Проверяет обязательные переменные окружения."""
     missing = []
     if not TELEGRAM_BOT_TOKEN:
         missing.append("TELEGRAM_BOT_TOKEN")
-    if not (OPENROUTER_API_KEY or GROQ_API_KEY or OLLAMA_URL):
-        missing.append("OPENROUTER_API_KEY or GROQ_API_KEY or OLLAMA_URL")
-    if not OPENAI_API_KEY and WHISPER_BACKEND == "openai":
-        missing.append("OPENAI_API_KEY (for cloud whisper fallback)")
     if missing:
         raise RuntimeError(f"Missing env vars: {', '.join(missing)}. See .env.example")

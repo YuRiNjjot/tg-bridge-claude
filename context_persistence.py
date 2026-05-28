@@ -11,7 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-ROOT_DIR = Path("/mnt/e/ClaudeCode")
+BASE_DIR = Path(__file__).parent
+ROOT_DIR = BASE_DIR.parent if (BASE_DIR.parent / ".claude").exists() else BASE_DIR
 MEMPALACE_DIR = ROOT_DIR / "mempalace"
 
 
