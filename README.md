@@ -30,6 +30,7 @@ claude
 Claude Code сам:
 - Установит зависимости (`pip install`)
 - Создаст `.env` из `.env.example` (попросит заполнить токен)
+- Запустит `setup_whisper.ps1` — скачает модель whisper (~466 MB, один раз)
 - Пропишет auto-approve в `settings.json`
 - Запустит `bridge_bot` в фоне + `bridge_poller` в терминале
 
@@ -74,6 +75,7 @@ Claude Code сам:
 | `bridge_poller.py` | ANSI-монитор для Claude Code (яркие баннеры при новом сообщении) |
 | `launch_bridge.ps1` | **Точка входа** — убивает старые процессы, запускает bridge + poller |
 | `config.py` | Чтение `.env` и валидация |
+| `setup_whisper.ps1` | Скачивает модель whisper (~466 MB) при первом запуске |
 | `.env.example` | Шаблон конфигурации |
 
 ---
